@@ -6,7 +6,14 @@ import { SessionV1 } from "@opencode-ai/core/v1/session"
 import { serviceUse } from "@opencode-ai/core/effect/service-use"
 import { Context, Effect, Layer } from "effect"
 import * as Stream from "effect/Stream"
-import { extractReasoningMiddleware, streamText, wrapLanguageModel, type ModelMessage, type Tool } from "ai"
+import {
+  extractReasoningMiddleware,
+  streamText,
+  wrapLanguageModel,
+  type LanguageModelMiddleware,
+  type ModelMessage,
+  type Tool,
+} from "ai"
 import type { LLMEvent } from "@opencode-ai/llm"
 import { LLMClient } from "@opencode-ai/llm/route"
 import type { LLMClientService } from "@opencode-ai/llm/route"
@@ -31,6 +38,38 @@ import { LLMNativeRuntime } from "./llm/native-runtime"
 import { LLMRequestPrep } from "./llm/request"
 
 export const OUTPUT_TOKEN_MAX = ProviderTransform.OUTPUT_TOKEN_MAX
+
+// Belt-and-suspenders for inline-reasoning models (e.g. MiniMax M3 on vLLM): on tool-call
+// steps the reasoning itself is extracted, but the provider still emits a bare `</tag>`
+// boundary in the text stream, which extractReasoningMiddleware leaves behind because the
+// opening tag never appeared in that step's content. Strip any residual open/close tags from
+// text so they never render in the message. Runs outermost, over extractReasoningMiddleware.
+function stripInlineReasoningTagMiddleware(tag: string): LanguageModelMiddleware {
+  const open = `<${tag}>`
+  const close = `</${tag}>`
+  return {
+    specificationVersion: "v3",
+    async wrapStream({ doStream }) {
+      const { stream, ...rest } = await doStream()
+      return {
+        stream: stream.pipeThrough(
+          new TransformStream({
+            transform(chunk: any, controller: TransformStreamDefaultController) {
+              if (chunk?.type === "text-delta" && typeof chunk.delta === "string" && chunk.delta.length > 0) {
+                const cleaned = chunk.delta.split(open).join("").split(close).join("")
+                if (cleaned.length === 0) return
+                controller.enqueue(cleaned === chunk.delta ? chunk : { ...chunk, delta: cleaned })
+                return
+              }
+              controller.enqueue(chunk)
+            },
+          }),
+        ),
+        ...rest,
+      }
+    },
+  }
+}
 
 export type StreamInput = {
   user: SessionV1.User
@@ -325,6 +364,11 @@ const live: Layer.Layer<
           model: wrapLanguageModel({
             model: language,
             middleware: [
+              // Outermost: scrub any reasoning tag that survives extraction below.
+              ...(typeof input.model.capabilities.interleaved === "object" &&
+              "tag" in input.model.capabilities.interleaved
+                ? [stripInlineReasoningTagMiddleware(input.model.capabilities.interleaved.tag)]
+                : []),
               {
                 specificationVersion: "v3" as const,
                 async transformParams(args) {
