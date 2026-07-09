@@ -283,8 +283,37 @@ function normalizeMessages(
     })
   }
 
+  // MiniMax M3 (and similar) want reasoning sent back interleaved in the content, wrapped in the
+  // same tag they emitted it with, rather than on a dedicated field. We stored it as a separate
+  // reasoning part (see extractReasoningMiddleware in session/llm.ts); re-inline it here.
+  if (typeof model.capabilities.interleaved === "object" && "tag" in model.capabilities.interleaved) {
+    const tag = model.capabilities.interleaved.tag
+    return msgs.map((msg) => {
+      if (msg.role !== "assistant" || !Array.isArray(msg.content)) return msg
+      const reasoningText = msg.content
+        .filter((part: any) => part.type === "reasoning")
+        .map((part: any) => part.text)
+        .join("")
+      if (!reasoningText) return msg
+      const inlined = `<${tag}>${reasoningText}</${tag}>`
+      let injected = false
+      const content = msg.content
+        .filter((part: any) => part.type !== "reasoning")
+        .map((part: any) => {
+          if (!injected && part.type === "text") {
+            injected = true
+            return { ...part, text: `${inlined}${part.text}` }
+          }
+          return part
+        })
+      if (!injected) content.unshift({ type: "text" as const, text: inlined })
+      return { ...msg, content }
+    })
+  }
+
   if (
     typeof model.capabilities.interleaved === "object" &&
+    "field" in model.capabilities.interleaved &&
     model.capabilities.interleaved.field &&
     model.api.npm !== "@openrouter/ai-sdk-provider"
   ) {

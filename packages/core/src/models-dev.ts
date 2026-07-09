@@ -59,6 +59,11 @@ export const Model = Schema.Struct({
       Schema.Struct({
         field: Schema.Literals(["reasoning", "reasoning_content", "reasoning_details"]),
       }),
+      // Reasoning delivered inline in the text stream wrapped in a tag (e.g. MiniMax M3's
+      // `<mm:think>`); extracted for display and re-inlined on the request.
+      Schema.Struct({
+        tag: Schema.String,
+      }),
     ]),
   ),
   cost: Schema.optional(Cost),

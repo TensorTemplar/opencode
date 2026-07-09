@@ -976,8 +976,15 @@ const ProviderModalities = Schema.Struct({
 
 const ProviderInterleaved = Schema.Union([
   Schema.Boolean,
+  // Reasoning delivered on a dedicated top-level field (e.g. DeepSeek's `reasoning_content`).
   Schema.Struct({
     field: Schema.Literals(["reasoning", "reasoning_content", "reasoning_details"]),
+  }),
+  // Reasoning delivered inline in the text stream wrapped in a provider-specific tag
+  // (e.g. MiniMax M3 on vLLM emits `<mm:think>...</mm:think>`). We extract it from the
+  // response for display and re-inline it on the request, since the model expects it back inline.
+  Schema.Struct({
+    tag: Schema.String,
   }),
 ])
 
@@ -1471,7 +1478,11 @@ const layer = Layer.effect(
                   existingModel?.capabilities.interleaved ??
                   (!existingModel && apiNpm === "@ai-sdk/openai-compatible" && apiID.includes("deepseek")
                     ? { field: "reasoning_content" }
-                    : false),
+                    : !existingModel &&
+                        apiNpm === "@ai-sdk/openai-compatible" &&
+                        apiID.toLowerCase().includes("minimax-m3")
+                      ? { tag: "mm:think" }
+                      : false),
               },
               cost: {
                 input: model?.cost?.input ?? existingModel?.cost?.input ?? 0,

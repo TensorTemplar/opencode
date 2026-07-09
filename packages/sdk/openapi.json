@@ -20833,6 +20833,16 @@
                       },
                       "required": ["field"],
                       "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "tag": {
+                          "type": "string"
+                        }
+                      },
+                      "required": ["tag"],
+                      "additionalProperties": false
                     }
                   ]
                 },
@@ -21642,6 +21652,16 @@
                       }
                     },
                     "required": ["field"],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "tag": {
+                        "type": "string"
+                      }
+                    },
+                    "required": ["tag"],
                     "additionalProperties": false
                   }
                 ]
