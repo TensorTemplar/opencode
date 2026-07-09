@@ -1758,6 +1758,92 @@ describe("ProviderTransform.message - DeepSeek reasoning content", () => {
   })
 })
 
+describe("ProviderTransform.message - inline tag reasoning", () => {
+  const minimaxModel = {
+    id: ModelV2.ID.make("minimax/minimax-m3"),
+    providerID: ProviderV2.ID.make("minimax"),
+    api: {
+      id: "minimax-m3",
+      url: "http://localhost:8000/v1",
+      npm: "@ai-sdk/openai-compatible",
+    },
+    name: "MiniMax M3",
+    capabilities: {
+      temperature: true,
+      reasoning: true,
+      attachment: false,
+      toolcall: true,
+      input: { text: true, audio: false, image: false, video: false, pdf: false },
+      output: { text: true, audio: false, image: false, video: false, pdf: false },
+      interleaved: { tag: "mm:think" },
+    },
+    cost: {
+      input: 0,
+      output: 0,
+      cache: { read: 0, write: 0 },
+    },
+    limit: {
+      context: 128000,
+      output: 8192,
+    },
+    status: "active",
+    options: {},
+    headers: {},
+    release_date: "2025-01-01",
+  } as any
+
+  test("re-inlines the reasoning part into the text content wrapped in the tag", () => {
+    const msgs = [
+      {
+        role: "assistant",
+        content: [
+          { type: "reasoning", text: "The user is greeting me." },
+          { type: "text", text: "Hey there!" },
+        ],
+      },
+    ] as any[]
+
+    const result = ProviderTransform.message(msgs, minimaxModel, {}) as any[]
+
+    expect(result).toHaveLength(1)
+    expect(result[0].content).toEqual([
+      { type: "text", text: "<mm:think>The user is greeting me.</mm:think>Hey there!" },
+    ])
+  })
+
+  test("prepends a text part when the assistant message has no text (e.g. tool call only)", () => {
+    const msgs = [
+      {
+        role: "assistant",
+        content: [
+          { type: "reasoning", text: "I should run the command." },
+          { type: "tool-call", toolCallId: "t1", toolName: "bash", input: { command: "ls" } },
+        ],
+      },
+    ] as any[]
+
+    const result = ProviderTransform.message(msgs, minimaxModel, {}) as any[]
+
+    expect(result[0].content).toEqual([
+      { type: "text", text: "<mm:think>I should run the command.</mm:think>" },
+      { type: "tool-call", toolCallId: "t1", toolName: "bash", input: { command: "ls" } },
+    ])
+  })
+
+  test("leaves assistant messages without reasoning untouched", () => {
+    const msgs = [
+      {
+        role: "assistant",
+        content: [{ type: "text", text: "Just an answer." }],
+      },
+    ] as any[]
+
+    const result = ProviderTransform.message(msgs, minimaxModel, {}) as any[]
+
+    expect(result[0].content).toEqual([{ type: "text", text: "Just an answer." }])
+  })
+})
+
 describe("ProviderTransform.message - surrogate sanitization", () => {
   const model = {
     id: "test/test-model",

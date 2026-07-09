@@ -1772,6 +1772,9 @@ export type ProviderConfig = {
         | {
             field: "reasoning" | "reasoning_content" | "reasoning_details"
           }
+        | {
+            tag: string
+          }
       cost?: {
         input: number
         output: number
@@ -2057,6 +2060,9 @@ export type Model = {
       | boolean
       | {
           field: "reasoning" | "reasoning_content" | "reasoning_details"
+        }
+      | {
+          tag: string
         }
   }
   cost: {

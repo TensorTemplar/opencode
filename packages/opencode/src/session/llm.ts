@@ -6,7 +6,7 @@ import { SessionV1 } from "@opencode-ai/core/v1/session"
 import { serviceUse } from "@opencode-ai/core/effect/service-use"
 import { Context, Effect, Layer } from "effect"
 import * as Stream from "effect/Stream"
-import { streamText, wrapLanguageModel, type ModelMessage, type Tool } from "ai"
+import { extractReasoningMiddleware, streamText, wrapLanguageModel, type ModelMessage, type Tool } from "ai"
 import type { LLMEvent } from "@opencode-ai/llm"
 import { LLMClient } from "@opencode-ai/llm/route"
 import type { LLMClientService } from "@opencode-ai/llm/route"
@@ -339,6 +339,13 @@ const live: Layer.Layer<
                   return args.params
                 },
               },
+              // Models that emit reasoning inline in the text stream (e.g. MiniMax M3's
+              // `<mm:think>...</mm:think>`) have it pulled into a dedicated reasoning part
+              // here so the user sees it separately instead of as raw tagged text.
+              ...(typeof input.model.capabilities.interleaved === "object" &&
+              "tag" in input.model.capabilities.interleaved
+                ? [extractReasoningMiddleware({ tagName: input.model.capabilities.interleaved.tag })]
+                : []),
             ],
           }),
           experimental_telemetry: {
